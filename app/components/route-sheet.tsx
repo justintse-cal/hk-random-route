@@ -76,7 +76,7 @@ export default function RouteSheet({
 
       {open && (
         <div className="sign-body">
-          {!loading && error && !route && (
+          {!loading && error && (
             <div className="route-error" role="alert">
               {error}
             </div>

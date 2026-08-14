@@ -66,7 +66,6 @@ export default function GenerateBand({
       type="button"
       className="icon-btn"
       aria-label={t(lang, "origin.bookmark")}
-      title={t(lang, "origin.bookmark")}
       onClick={onBookmark}
       disabled={!canBookmark}
     >
@@ -129,7 +128,6 @@ export default function GenerateBand({
               follow?.active ? t(lang, "follow.stop") : t(lang, "follow.start")
             }
             aria-pressed={follow?.active ?? false}
-            title={follow?.active ? t(lang, "follow.stop") : t(lang, "follow.start")}
             onClick={onToggleFollow}
           >
             <NavigationIcon aria-hidden="true" />
@@ -138,7 +136,6 @@ export default function GenerateBand({
             type="button"
             className="icon-btn"
             aria-label={saved ? t(lang, "route.saved") : t(lang, "route.save")}
-            title={saved ? t(lang, "route.saved") : t(lang, "route.save")}
             onClick={onSave}
             disabled={saved}
           >
@@ -152,7 +149,6 @@ export default function GenerateBand({
             type="button"
             className="icon-btn"
             aria-label={t(lang, "route.exportGpx")}
-            title={t(lang, "route.exportGpx")}
             onClick={onExport}
           >
             <DownloadIcon aria-hidden="true" />
@@ -163,7 +159,6 @@ export default function GenerateBand({
             aria-label={
               shareCopied ? t(lang, "route.shareCopied") : t(lang, "route.share")
             }
-            title={shareCopied ? t(lang, "route.shareCopied") : t(lang, "route.share")}
             onClick={onShare}
           >
             {shareCopied ? (

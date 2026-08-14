@@ -2,7 +2,7 @@ import type { Lang } from "@/lib/i18n";
 import { t } from "@/lib/i18n";
 import type { GenerateError } from "@/lib/types";
 
-export type AppError = GenerateError | "no-origin" | "network";
+export type AppError = GenerateError | "no-origin" | "network" | "location-denied";
 
 export function appErrorText(lang: Lang, error: AppError): string {
   switch (error) {
@@ -14,6 +14,8 @@ export function appErrorText(lang: Lang, error: AppError): string {
       return t(lang, "error.noRoute");
     case "no-origin":
       return t(lang, "origin.pinHint");
+    case "location-denied":
+      return t(lang, "error.locationDenied");
     default:
       return t(lang, "error.generic");
   }

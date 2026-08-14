@@ -159,6 +159,10 @@ vi.mock("maplibre-gl", () => {
       return { lng: 114.1694, lat: 22.3027 };
     }
 
+    getContainer() {
+      return { querySelector: () => null };
+    }
+
     getZoom() {
       return 13;
     }
@@ -414,6 +418,76 @@ describe("app light end-to-end flow", () => {
       () => expect(screen.queryByText("連結已複製")).toBeNull(),
       { timeout: 3000 },
     );
+  });
+
+  it("uses the native share sheet when available instead of the clipboard", async () => {
+    vi.stubGlobal("fetch", fetchMock);
+    const shareMock = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "share", {
+      value: shareMock,
+      configurable: true,
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    Object.defineProperty(navigator, "geolocation", {
+      value: {
+        getCurrentPosition: (cb: (pos: unknown) => void) =>
+          cb({ coords: { latitude: 22.3027, longitude: 114.1694 } }),
+        watchPosition: () => 1,
+        clearWatch: () => undefined,
+      },
+      configurable: true,
+    });
+
+    const { default: Home } = await import("./page");
+    render(React.createElement(Home));
+
+    fireEvent.click(await screen.findByRole("button", { name: "使用當前位置" }));
+    await waitFor(() => {
+      expect(
+        (screen.getByText("生成路線") as HTMLButtonElement).disabled,
+      ).toBe(false);
+    });
+    fireEvent.click(screen.getByText("生成路線"));
+    expect(await screen.findByText("環形")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "分享連結" }));
+    await waitFor(() => expect(shareMock).toHaveBeenCalledTimes(1));
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("shows a location-permission message when geolocation is denied", async () => {
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(navigator, "geolocation", {
+      value: {
+        getCurrentPosition: (cb: (pos: unknown) => void) =>
+          cb({ coords: { latitude: 22.3027, longitude: 114.1694 } }),
+        watchPosition: (_ok: unknown, onErr: (err: { code: number }) => void) => {
+          onErr({ code: 1 });
+          return 1;
+        },
+        clearWatch: () => undefined,
+      },
+      configurable: true,
+    });
+
+    const { default: Home } = await import("./page");
+    render(React.createElement(Home));
+
+    fireEvent.click(await screen.findByRole("button", { name: "使用當前位置" }));
+    await waitFor(() => {
+      expect(
+        (screen.getByText("生成路線") as HTMLButtonElement).disabled,
+      ).toBe(false);
+    });
+    fireEvent.click(screen.getByText("生成路線"));
+    expect(await screen.findByText("環形")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "開始跟進" }));
+    expect(await screen.findByText(/允許取用位置/)).toBeTruthy();
   });
 
   it("re-applies overlay layers and data after a theme-style swap", async () => {
@@ -725,5 +799,25 @@ describe("app light end-to-end flow", () => {
     expect(screen.getByText("How to use?")).toBeTruthy();
     expect(screen.getByText(/Tap the map to set your origin/)).toBeTruthy();
     expect(screen.queryByText(/OpenFreeMap/)).toBeNull();
+  });
+
+  it("collapses the dock with the toggle", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("offline");
+    });
+
+    const { default: Home } = await import("./page");
+    const { container } = render(React.createElement(Home));
+
+    const toggle = await screen.findByRole("button", { name: "收合控制面板" });
+    expect(container.querySelectorAll(".dock-toggle-chev")).toHaveLength(2);
+    expect(container.querySelector(".app")?.classList.contains("app--dock-collapsed")).toBe(false);
+
+    fireEvent.click(toggle);
+    expect(container.querySelector(".app")?.classList.contains("app--dock-collapsed")).toBe(true);
+    expect(screen.getByRole("button", { name: "展開控制面板" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "展開控制面板" }));
+    expect(container.querySelector(".app")?.classList.contains("app--dock-collapsed")).toBe(false);
   });
 });

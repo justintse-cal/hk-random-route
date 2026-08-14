@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { requestRoute, requestSnap, requestWeather } from "@/lib/api";
 import {
   nearestOnPolyline,
@@ -35,7 +35,7 @@ import GenerateBand from "./components/generate-band";
 import AboutView from "./components/about-panel";
 import SavedView from "./components/saved-panel";
 import LegendView from "./components/legend-panel";
-import { CheckIcon } from "./components/icons";
+import { CheckIcon, ChevronIcon } from "./components/icons";
 
 const MapView = dynamic(() => import("./components/map-view"), { ssr: false });
 
@@ -114,6 +114,8 @@ export default function Home() {
   const [lang, setLang] = useState<Lang>("tc");
   const [dark, setDark] = useState(false);
   const [view, setView] = useState<AppView>("controls");
+  const [dockCollapsed, setDockCollapsed] = useState(false);
+  const [dockCollapsedH, setDockCollapsedH] = useState<number | null>(null);
   const [origin, setOrigin] = useState<{ lat: number; lon: number } | null>(null);
   const [pendingOrigin, setPendingOrigin] = useState<{ lat: number; lon: number } | null>(null);
   const [originPlaced, setOriginPlaced] = useState(false);
@@ -140,6 +142,7 @@ export default function Home() {
   const [savedRoute, setSavedRoute] = useState<Route | null>(null);
   const [saveCopied, setSaveCopied] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [originBookmarked, setOriginBookmarked] = useState(false);
   const [confirm, setConfirm] = useState<string | null>(null);
   const [follow, setFollow] = useState<FollowUiState | null>(null);
@@ -150,8 +153,29 @@ export default function Home() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bookmarkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dockScrollRef = useRef<HTMLDivElement | null>(null);
+  const dockRef = useRef<HTMLDivElement | null>(null);
 
   const storage = () => window.localStorage;
+
+  const toggleDock = () => {
+    const dock = dockRef.current;
+    if (dock) {
+      const scroll = dockScrollRef.current;
+      setDockCollapsedH(
+        scroll ? dock.offsetHeight - scroll.offsetHeight : dock.offsetHeight,
+      );
+    }
+    setDockCollapsed((c) => !c);
+  };
+
+  useEffect(() => {
+    if (!dockCollapsed) return;
+    const dock = dockRef.current;
+    const scroll = dockScrollRef.current;
+    if (dock && scroll) {
+      setDockCollapsedH(dock.offsetHeight - scroll.offsetHeight);
+    }
+  }, [view, dockCollapsed]);
 
   useEffect(() => {
     setBookmarks(loadBookmarks(storage()));
@@ -199,6 +223,24 @@ export default function Home() {
     const id = setTimeout(() => setConfirm(null), 2000);
     return () => clearTimeout(id);
   }, [confirm]);
+
+  useEffect(() => {
+    if (!route) {
+      setShareUrl(null);
+      return;
+    }
+    let cancelled = false;
+    encodeRoute(route)
+      .then((payload) => {
+        if (!cancelled) setShareUrl(buildShareUrl(payload, window.location.href));
+      })
+      .catch(() => {
+        if (!cancelled) setShareUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [route]);
 
   useEffect(() => {
     scrollDockTop(dockScrollRef.current, false);
@@ -439,21 +481,25 @@ export default function Home() {
 
   const shareRoute = useCallback(async () => {
     if (!route) return;
-    try {
-      const payload = await encodeRoute(route);
-      const url = buildShareUrl(payload, window.location.href);
-      if (await copyText(url)) {
-        setShareCopied(true);
-        if (shareTimerRef.current) clearTimeout(shareTimerRef.current);
-        shareTimerRef.current = setTimeout(() => setShareCopied(false), 2000);
-        setConfirm(t(lang, "route.shareCopied"));
-      } else {
-        setError("network");
+    const url =
+      shareUrl ?? buildShareUrl(await encodeRoute(route), window.location.href);
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: t(lang, "app.title"), url });
+        return;
+      } catch (err) {
+        if ((err as DOMException).name === "AbortError") return;
       }
-    } catch {
+    }
+    if (await copyText(url)) {
+      setShareCopied(true);
+      if (shareTimerRef.current) clearTimeout(shareTimerRef.current);
+      shareTimerRef.current = setTimeout(() => setShareCopied(false), 2000);
+      setConfirm(t(lang, "route.shareCopied"));
+    } else {
       setError("network");
     }
-  }, [route]);
+  }, [route, shareUrl, lang]);
 
   const startFollow = useCallback(() => {
     if (!route) return;
@@ -480,7 +526,12 @@ export default function Home() {
             : Math.round(route.distanceM),
         });
       },
-      () => {
+      (err) => {
+        if (err.code === 1) {
+          setError("location-denied");
+          stopFollow();
+          return;
+        }
         setFollow((prev) =>
           prev ? { ...prev, active: true, lost: true } : null,
         );
@@ -488,7 +539,7 @@ export default function Home() {
       { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 },
     );
     watchIdRef.current = handle;
-  }, [route, lang]);
+  }, [route, lang, stopFollow]);
 
   const toggleFollow = useCallback(() => {
     if (follow?.active) {
@@ -522,8 +573,15 @@ export default function Home() {
   const errorText = error ? appErrorText(lang, error) : null;
   const originErrorText = originError ? appErrorText(lang, originError) : null;
 
+  const dockStyle = dockCollapsedH
+    ? ({ "--dock-collapsed-h": `${dockCollapsedH}px` } as CSSProperties)
+    : undefined;
+
   return (
-    <div className="app">
+    <div
+      className={`app${dockCollapsed ? " app--dock-collapsed" : ""}`}
+      style={dockStyle}
+    >
       <div className="map-layer">
         <MapView
           origin={snappedOrigin ?? origin}
@@ -548,7 +606,23 @@ export default function Home() {
         />
       </div>
 
-      <div className="dock">
+      <div className="dock" ref={dockRef}>
+        <button
+          type="button"
+          className="dock-toggle"
+          aria-expanded={!dockCollapsed}
+          aria-label={t(lang, dockCollapsed ? "dock.expand" : "dock.collapse")}
+          onClick={toggleDock}
+        >
+          <span className="dock-toggle-double">
+            <ChevronIcon
+              className={`dock-toggle-chev${dockCollapsed ? " dock-toggle-chev--up" : ""}`}
+            />
+            <ChevronIcon
+              className={`dock-toggle-chev dock-toggle-chev--bottom${dockCollapsed ? " dock-toggle-chev--up" : ""}`}
+            />
+          </span>
+        </button>
         <div className="dock-scroll" ref={dockScrollRef} tabIndex={-1}>
           <div className="dock-inner">
             {view === "controls" ? (

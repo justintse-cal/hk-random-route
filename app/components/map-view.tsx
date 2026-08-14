@@ -182,6 +182,14 @@ function setPointData(
 
 const STYLE_READY_EVENTS = ["load", "styledata", "idle"] as const;
 
+function collapseAttribution(map: MapLibreMap): void {
+  const attrib = map.getContainer().querySelector<HTMLElement>(
+    ".maplibregl-ctrl-attrib",
+  );
+  attrib?.classList.remove("maplibregl-compact-show");
+  attrib?.removeAttribute("open");
+}
+
 function whenStyleReady(map: MapLibreMap, fn: () => void): void {
   if (map.isStyleLoaded()) {
     fn();
@@ -436,6 +444,7 @@ export default function MapView({
     map.on("load", () => {
       const m = mapRef.current;
       if (!m) return;
+      collapseAttribution(m);
       applyOverlays(m, dataRef.current, overlayCacheRef.current);
       positionFloating();
       if (pendingCameraRef.current) {
@@ -447,6 +456,7 @@ export default function MapView({
     map.on("styledata", () => {
       const m = mapRef.current;
       if (!m) return;
+      collapseAttribution(m);
       applyOverlays(m, dataRef.current, overlayCacheRef.current);
     });
 

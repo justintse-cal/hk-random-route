@@ -51,6 +51,7 @@ const tc = {
   "error.unsupportedDistance": "距離超出支援範圍（0.5–50 公里）",
   "error.noRoute": "未能生成路線，請嘗試調整條件",
   "error.generic": "發生錯誤，請重試",
+  "error.locationDenied": "無法使用定位 — 請在瀏覽器／系統設定中允許取用位置",
 
   "weather.title": "天氣警告",
   "weather.none": "目前沒有生效的天氣警告",
@@ -78,6 +79,8 @@ const tc = {
 
   "dock.saved": "收藏",
   "dock.about": "關於",
+  "dock.collapse": "收合控制面板",
+  "dock.expand": "展開控制面板",
   "nav.controls": "控制面板",
   "nav.weather": "天氣",
   "nav.favourites": "收藏",
@@ -183,6 +186,8 @@ const en: Record<keyof typeof tc, string> = {
   "error.unsupportedDistance": "Distance outside the supported range (0.5–50 km)",
   "error.noRoute": "Could not generate a route. Try adjusting your criteria.",
   "error.generic": "Something went wrong. Please try again.",
+  "error.locationDenied":
+    "Location unavailable — allow location access in your browser or system settings",
 
   "weather.title": "Weather warning",
   "weather.none": "No active weather warning",
@@ -210,6 +215,8 @@ const en: Record<keyof typeof tc, string> = {
 
   "dock.saved": "Favourites",
   "dock.about": "About",
+  "dock.collapse": "Collapse panel",
+  "dock.expand": "Expand panel",
   "nav.controls": "Control panel",
   "nav.weather": "Weather",
   "nav.favourites": "Favourites",
