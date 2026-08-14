@@ -2,6 +2,8 @@
 
 A web app that generates random jogging and walking routes over the **HK 3D Pedestrian Network**, filtered by your criteria. Pick an origin, choose a distance and route preferences, and get a random loop, one-way, or out-and-back route you can follow live, export as GPX, or share with a link.
 
+> Visit the live app [here](https://hk-random-route.vercel.app/).
+
 <p align="center">
   <img src="screenshots/light_web.png" width="76%" alt="HK Random Route on desktop, light theme" />
   <img src="screenshots/dark_mobile.png" width="22%" alt="HK Random Route on mobile, dark theme" />
@@ -106,15 +108,7 @@ npm run typecheck
 
 The suite covers the generation contract over the real graph (tolerance bands, loop closure, segment compliance, no-immediate-repeat), snapping, share-link round-tripping, follow geometry, GPX export, i18n parity, persistence, the weather proxy, and a light end-to-end UI flow.
 
-## Deployment (Vercel)
-
-The project is set up to deploy to Vercel as-is:
-
-1. Push the repository to GitHub and import it into Vercel (framework preset: Next.js). No environment variables are required.
-2. `public/graph.bin` is committed (~20 MB), and `next.config.ts` includes it in the serverless function bundle via `outputFileTracingIncludes`, so `/api/generate` and `/api/snap` can read it at runtime.
-3. Verify locally with `npm run build` before pushing.
-
 ## Data
 
 - **Route network data:** [HK 3D Pedestrian Network](https://data.gov.hk/en-data/dataset/hk-landsd-openmap-3d-pedestrian-network), provided by the Lands Department of Hong Kong.
-- **Weather:** Hong Kong Observatory (HKO) warning data from [current weather report](https://data.gov.hk/en-data/dataset/hk-hko-rss-current-weather-report).
+- **Weather Warning:** Hong Kong Observatory (HKO) warning data from [current weather report](https://data.gov.hk/en-data/dataset/hk-hko-rss-current-weather-report).

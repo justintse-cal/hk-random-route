@@ -192,6 +192,7 @@ vi.mock("maplibre-gl", () => {
   return {
     Map: FakeMap,
     NavigationControl: class {},
+    AttributionControl: class {},
     GeoJSONSource: FakeSource,
     LngLatBounds: class {
       extend() {

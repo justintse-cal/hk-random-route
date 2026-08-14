@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import {
   AJAXError,
+  AttributionControl,
   GeoJSONSource,
   LngLatBounds,
   Map as MapLibreMap,
@@ -416,13 +417,14 @@ export default function MapView({
       style: appliedDarkRef.current ? DARK_FALLBACK_URL : LIGHT_STYLE,
       center: [114.1694, 22.3027],
       zoom: 13,
-      attributionControl: { compact: true },
+      attributionControl: false,
     });
 
     mapRef.current = map;
     map.on("error", (e) => {
       if (!isAbortedRequestError(e.error)) console.error(e.error);
     });
+    map.addControl(new AttributionControl({ compact: true }), "bottom-left");
     map.addControl(new NavigationControl(), "top-right");
     map.on("click", (e: MapMouseEvent) => {
       onPickRef.current({ lat: e.lngLat.lat, lon: e.lngLat.lng });
