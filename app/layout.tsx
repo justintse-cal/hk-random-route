@@ -16,11 +16,11 @@ const notoHk = Noto_Sans_HK({
 export const metadata: Metadata = {
   title: "HK 隨機路線 · Random Route",
   description:
-    "Generate random jogging or walking routes over the HK 3D Pedestrian Network.",
+    "Generate random routes for jogging or walking in Hong Kong.",
   openGraph: {
     title: "HK 隨機路線 · Random Route",
     description:
-      "Generate random jogging or walking routes over the HK 3D Pedestrian Network.",
+      "Generate random routes for jogging or walking in Hong Kong.",
     siteName: "HK Random Route",
     locale: "zh_HK",
     type: "website",
