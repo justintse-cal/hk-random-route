@@ -343,7 +343,13 @@ export default function Home() {
         applyOrigin({ lat: pos.coords.latitude, lon: pos.coords.longitude });
         setFitOriginKey((k) => k + 1);
       },
-      () => setOriginError("network"),
+      (err: GeolocationPositionError) => {
+        if (err.code === 1) {
+          setOriginError("location-denied");
+        } else {
+          setOriginError("network");
+        }
+      },
       { enableHighAccuracy: true, timeout: 10000 },
     );
   }, [applyOrigin]);
