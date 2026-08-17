@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   BIT_BARRIER_FREE,
-  BIT_COVERED,
   BIT_FLAT,
+  BIT_OUTDOOR,
   generateRoute,
 } from "./generator";
 import type { Graph } from "./graph";
@@ -127,7 +127,7 @@ function findTreeComponentOrigin(): {
 
 function maskCompliant(segmentId: number, criteria: Partial<Criteria>): boolean {
   const mask = graph.mask[segmentId];
-  if (criteria.covered && !(mask & BIT_COVERED)) return false;
+  if (criteria.outdoorOnly && !(mask & BIT_OUTDOOR)) return false;
   if (criteria.barrierFree && !(mask & BIT_BARRIER_FREE)) return false;
   if (criteria.flat && !(mask & BIT_FLAT)) return false;
   return true;
@@ -156,16 +156,6 @@ function expectInBand(res: GenerateResponse, target: number) {
   expect([0.1, 0.15, 0.25]).toContain(tol);
   expect(res.route!.distanceM).toBeGreaterThanOrEqual(target - 0.1);
   expect(res.route!.distanceM).toBeLessThanOrEqual(target * (1 + tol) + 0.1);
-}
-
-function coveredFraction(route: Route): number {
-  let covered = 0;
-  let total = 0;
-  for (const s of route.segmentIds) {
-    if (graph.mask[s] & BIT_COVERED) covered += graph.length[s];
-    total += graph.length[s];
-  }
-  return total > 0 ? covered / total : 0;
 }
 
 describe("route generation contract", () => {
@@ -291,35 +281,20 @@ describe("route generation contract", () => {
     expect(okCount).toBeGreaterThanOrEqual(7);
   });
 
-  it("covered preference never fails and maximises covered distance", () => {
+  it("outdoor-only filter produces only outdoor segments", () => {
     const o = originInGiantComponent();
-    let diff = 0;
-    let count = 0;
     for (let seed = 1; seed <= 12; seed++) {
-      const plain = generateRoute(graph, {
+      const result = generateRoute(graph, {
         origin: o,
         targetDistanceM: 3000,
-        criteria: { loop: true },
+        criteria: { loop: true, outdoorOnly: true },
         seed,
       });
-      const covered = generateRoute(graph, {
-        origin: o,
-        targetDistanceM: 3000,
-        criteria: { loop: true, covered: true },
-        seed,
-      });
-      expect(plain.ok).toBe(true);
-      expect(covered.ok).toBe(true);
-      const route = covered.route!;
-      expect(route.type).toBe("loop");
-      diff += coveredFraction(route) - coveredFraction(plain.route!);
-      count++;
+      if (!result.ok) continue;
+      for (const segId of result.route!.segmentIds) {
+        expect(graph.mask[segId] & BIT_OUTDOOR).toBeTruthy();
+      }
     }
-    expect(count).toBe(12);
-    // With the one-sided band both runs now reach the target (plain loops are
-    // no longer short), so the covered advantage shrinks — it must still add
-    // measurable covered fraction on average.
-    expect(diff / count).toBeGreaterThan(0.01);
   });
 
   it("honours the no-immediate-repeat rule across consecutive calls", () => {
@@ -394,5 +369,49 @@ describe("route generation contract", () => {
     expect(route.barrierFreePct).toBeLessThanOrEqual(100);
     const flat = route.segmentFlat!.filter((f) => f).length;
     expect(flat).toBeGreaterThan(0);
+  });
+
+  it("5km loop succeeds in most seeds", () => {
+    const o = originInGiantComponent();
+    let success = 0;
+    for (let seed = 0; seed < 10; seed++) {
+      const res = generateRoute(graph, {
+        origin: o,
+        targetDistanceM: 5000,
+        seed,
+        criteria: { loop: true },
+      });
+      if (res.ok) {
+        success++;
+        expectInBand(res, 5000);
+        expect(res.route!.type).toBe("loop");
+        expect(res.route!.nodeIds[0]).toBe(
+          res.route!.nodeIds[res.route!.nodeIds.length - 1],
+        );
+      }
+    }
+    expect(success).toBeGreaterThanOrEqual(6);
+  });
+
+  it("10km loop succeeds in some seeds", () => {
+    const o = originInGiantComponent();
+    let success = 0;
+    for (let seed = 0; seed < 10; seed++) {
+      const res = generateRoute(graph, {
+        origin: o,
+        targetDistanceM: 10000,
+        seed,
+        criteria: { loop: true },
+      });
+      if (res.ok) {
+        success++;
+        expectInBand(res, 10000);
+        expect(res.route!.type).toBe("loop");
+        expect(res.route!.nodeIds[0]).toBe(
+          res.route!.nodeIds[res.route!.nodeIds.length - 1],
+        );
+      }
+    }
+    expect(success).toBeGreaterThanOrEqual(3);
   });
 });

@@ -40,7 +40,7 @@ import { CheckIcon, ChevronIcon } from "./components/icons";
 const MapView = dynamic(() => import("./components/map-view"), { ssr: false });
 
 const DEFAULT_CRITERIA: Criteria = {
-  covered: false,
+  outdoorOnly: false,
   barrierFree: false,
   flat: false,
   loop: true,
@@ -160,10 +160,11 @@ export default function Home() {
   const toggleDock = () => {
     const dock = dockRef.current;
     if (dock) {
-      const scroll = dockScrollRef.current;
-      setDockCollapsedH(
-        scroll ? dock.offsetHeight - scroll.offsetHeight : dock.offsetHeight,
-      );
+      const toggle = dock.querySelector<HTMLElement>(".dock-toggle");
+      const utility = dock.querySelector<HTMLElement>(".utility");
+      if (toggle && utility) {
+        setDockCollapsedH(toggle.offsetHeight + utility.offsetHeight + dock.clientTop);
+      }
     }
     setDockCollapsed((c) => !c);
   };
@@ -171,9 +172,10 @@ export default function Home() {
   useEffect(() => {
     if (!dockCollapsed) return;
     const dock = dockRef.current;
-    const scroll = dockScrollRef.current;
-    if (dock && scroll) {
-      setDockCollapsedH(dock.offsetHeight - scroll.offsetHeight);
+    const toggle = dock?.querySelector<HTMLElement>(".dock-toggle");
+    const utility = dock?.querySelector<HTMLElement>(".utility");
+    if (toggle && utility && dock) {
+      setDockCollapsedH(toggle.offsetHeight + utility.offsetHeight + dock.clientTop);
     }
   }, [view, dockCollapsed]);
 

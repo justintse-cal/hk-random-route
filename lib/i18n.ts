@@ -18,7 +18,7 @@ const tc = {
   "distance.error.range": "距離須介乎 0.5 至 50 公里",
 
   "criteria.title": "條件",
-  "criteria.covered": "優先有蓋",
+  "criteria.outdoorOnly": "只限戶外",
   "criteria.barrierFree": "只限無障礙",
   "criteria.flat": "只限平坦",
   "criteria.loop": "環形路線",
@@ -153,7 +153,7 @@ const en: Record<keyof typeof tc, string> = {
   "distance.error.range": "Distance must be between 0.5 and 50 km",
 
   "criteria.title": "Criteria",
-  "criteria.covered": "Prioritize covered",
+  "criteria.outdoorOnly": "Outdoor only",
   "criteria.barrierFree": "Barrier-free only",
   "criteria.flat": "Flat only",
   "criteria.loop": "Loop",

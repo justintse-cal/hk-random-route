@@ -705,7 +705,7 @@ describe("app light end-to-end flow", () => {
         distanceInput: "3",
         distanceError: null,
         originError: "起點無效",
-        criteria: { covered: false, barrierFree: false, flat: false, loop: true },
+        criteria: { outdoorOnly: false, barrierFree: false, flat: false, loop: true },
         onDistanceChange: () => undefined,
         onCriteriaChange: () => undefined,
       }),

@@ -7,6 +7,7 @@ import type {
   Route,
 } from "./types";
 
+export const BIT_OUTDOOR = 0x01;
 export const BIT_COVERED = 0x04;
 export const BIT_BARRIER_FREE = 0x08;
 export const BIT_FLAT = 0x10;
@@ -17,26 +18,28 @@ export const SNAP_RADIUS_M = 500;
 
 const TOLERANCES = [0.1, 0.15, 0.25];
 const ATTEMPTS = 120;
-const MAX_STEPS = 4000;
 const LEG_MAX_DISTANCE_M = 2000;
 const WALK_PACE_MS = (4.5 * 1000) / 3600;
 const RUN_PACE_MS = (9 * 1000) / 3600;
 
+function homewardAttempts(target: number): number {
+  return 60 + Math.floor(target / 500) * 20;
+}
+
+function scaledMaxSteps(target: number): number {
+  return Math.min(16000, Math.max(4000, target * 3));
+}
+
 /**
- * Soft-preference tuning for the random walks.
- * `preferCovered` boosts covered edges so routes gravitate through them but
- * can still cross uncovered gaps (covered is a preference, never a hard
- * filter — the covered subnetwork is too fragmented to filter on).
+ * Tuning for the random walks.
  * `penalize` marks edges (e.g. a previous route) that stay usable but are
  * strongly disfavoured, so regeneration can always succeed while reusing
  * as few old segments as possible.
  */
 export interface WalkOpts {
-  preferCovered?: boolean;
   penalize?: (edgeId: number) => boolean;
 }
 
-const COVER_PREFERENCE = 30;
 const REUSE_PENALTY = 0.02;
 
 export interface WalkResult {
@@ -52,6 +55,7 @@ export function makeMaskOk(criteria: GenerateRequest["criteria"]): MaskOk {
   const c = criteria ?? {};
   return (g: Graph, edgeId: number) => {
     const mask = g.mask[edgeId];
+    if (c.outdoorOnly && !(mask & BIT_OUTDOOR)) return false;
     if (c.barrierFree && !(mask & BIT_BARRIER_FREE)) return false;
     if (c.flat && !(mask & BIT_FLAT)) return false;
     return true;
@@ -60,21 +64,10 @@ export function makeMaskOk(criteria: GenerateRequest["criteria"]): MaskOk {
 
 function weightFactor(g: Graph, edge: number, opts: WalkOpts): number {
   let factor = 1;
-  if (opts.preferCovered && g.mask[edge] & BIT_COVERED) {
-    factor *= COVER_PREFERENCE;
-  }
   if (opts.penalize && opts.penalize(edge)) {
     factor *= REUSE_PENALTY;
   }
   return factor;
-}
-
-function coveredDist(g: Graph, path: number[]): number {
-  let s = 0;
-  for (const e of path) {
-    if (g.mask[e] & BIT_COVERED) s += g.length[e];
-  }
-  return s;
 }
 
 function maskDist(g: Graph, path: number[], bit: number): number {
@@ -87,25 +80,6 @@ function maskDist(g: Graph, path: number[], bit: number): number {
 
 function pctOf(part: number, total: number): number {
   return total > 0 ? Math.round((part / total) * 100) : 0;
-}
-
-/**
- * Candidate comparison. When `coveragePrimary`, covered distance dominates
- * (used for in-band states in covered mode); otherwise distance error
- * dominates and coverage breaks near-ties.
- */
-function prefersBetter(
-  absA: number,
-  covA: number,
-  absB: number,
-  covB: number,
-  coveragePrimary: boolean,
-): boolean {
-  if (coveragePrimary) {
-    return covA > covB || (covA === covB && absA < absB);
-  }
-  if (Math.abs(absA - absB) > 1) return absA < absB;
-  return covA > covB;
 }
 
 function gainOf(g: Graph, edge: number, fromNode: number): number {
@@ -210,15 +184,9 @@ function recordBest(
   nodes: number[],
   dist: number,
   g: Graph,
-  preferCovered: boolean,
-  coveragePrimary = false,
 ): { best: WalkResult | null; bestAbs: number } {
   const abs = Math.abs(dist - target);
-  const take =
-    preferCovered && best
-      ? prefersBetter(abs, coveredDist(g, path), bestAbs, coveredDist(g, best.path), coveragePrimary)
-      : abs < bestAbs;
-  if (take) {
+  if (abs < bestAbs) {
     return {
       best: {
         path: [...path],
@@ -298,30 +266,27 @@ function oneWayLeg(
   const high = target * highFrac;
   const lat0 = ref ? ref.lat : g.lat[start];
   const lon0 = ref ? ref.lon : g.lon[start];
-  const maxSteps = Math.min(12000, Math.max(MAX_STEPS, target * 3));
-  const attempts = Math.max(3, Math.round((ATTEMPTS * MAX_STEPS) / maxSteps));
+  const maxStepsVal = scaledMaxSteps(target);
+  const attempts = Math.max(3, Math.round((ATTEMPTS * 4000) / maxStepsVal));
   let best: WalkResult | null = null;
   let bestAbs = Infinity;
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  let bandDone = false;
+  for (let attempt = 0; attempt < attempts && !bandDone; attempt++) {
     const path: number[] = [];
     const nodes: number[] = [start];
     const used = new Set<number>(excluded);
     let node = start;
     let dist = 0;
     let lastDir: { lat: number; lon: number } | null = null;
-    for (let step = 0; step < maxSteps; step++) {
+    for (let step = 0; step < maxStepsVal; step++) {
       if (dist >= low && dist <= high) {
         if (!requireExtension) {
-          if (opts.preferCovered) {
-            ({ best, bestAbs } = recordBest(best, bestAbs, target, path, nodes, dist, g, true, true));
-          } else {
-            return {
-              path,
-              nodes,
-              distance: dist,
-              gain: gainOfPath(g, path, nodes),
-            };
-          }
+          return {
+            path,
+            nodes,
+            distance: dist,
+            gain: gainOfPath(g, path, nodes),
+          };
         } else if (hasCandidate(g, node, used, ok)) {
           return {
             path,
@@ -332,12 +297,12 @@ function oneWayLeg(
         }
       }
       if (dist > high) {
-        ({ best, bestAbs } = recordBest(best, bestAbs, target, path, nodes, dist, g, !!opts.preferCovered));
+        ({ best, bestAbs } = recordBest(best, bestAbs, target, path, nodes, dist, g));
         break;
       }
       const cands = incidentCandidates(g, node, used, ok);
       if (cands.length === 0) {
-        ({ best, bestAbs } = recordBest(best, bestAbs, target, path, nodes, dist, g, !!opts.preferCovered));
+        ({ best, bestAbs } = recordBest(best, bestAbs, target, path, nodes, dist, g));
         break;
       }
       const weights = walkWeights(g, cands, node, lastDir, lat0, lon0, opts);
@@ -543,6 +508,7 @@ function homewardWalk(
   pDistance: number,
   low: number,
   high: number,
+  target: number,
   opts: WalkOpts = {},
 ): HomewardResult | null {
   const lat0 = g.lat[start];
@@ -550,38 +516,21 @@ function homewardWalk(
   const midTarget = (low + high) / 2;
   let best: HomewardResult | null = null;
   let bestAbs = Infinity;
-  let bestCov = -Infinity;
-  let bestInBand: HomewardResult | null = null;
-  let bestInBandCov = -Infinity;
-  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+  for (let attempt = 0; attempt < homewardAttempts(target); attempt++) {
     const path: number[] = [];
     const nodes: number[] = [fromNode];
     const used = new Set<number>(excluded);
     let node = fromNode;
     let dist = 0;
-    for (let step = 0; step < MAX_STEPS; step++) {
+    for (let step = 0; step < scaledMaxSteps(target / 2); step++) {
       if (node === start) {
         const total = pDistance + dist;
-        const cov = coveredDist(g, path);
         if (total >= low && total <= high) {
-          const cand = { path: [...path], nodes: [...nodes], closeEdge: -1, distance: dist };
-          if (opts.preferCovered) {
-            if (cov > bestInBandCov) {
-              bestInBandCov = cov;
-              bestInBand = cand;
-            }
-          } else {
-            return cand;
-          }
+          return { path: [...path], nodes: [...nodes], closeEdge: -1, distance: dist };
         }
         const abs = Math.abs(total - midTarget);
-        const take =
-          opts.preferCovered && best
-            ? prefersBetter(abs, cov, bestAbs, bestCov, false)
-            : abs < bestAbs;
-        if (take) {
+        if (abs < bestAbs) {
           bestAbs = abs;
-          bestCov = cov;
           best = { path: [...path], nodes: [...nodes], closeEdge: -1, distance: dist };
         }
         break;
@@ -591,31 +540,17 @@ function homewardWalk(
         if (g.adjNeighbor[i] !== start) continue;
         if (used.has(edge) || !ok(g, edge)) continue;
         const total = pDistance + dist + g.length[edge];
-        const cov = coveredDist(g, path) + (g.mask[edge] & BIT_COVERED ? g.length[edge] : 0);
         if (total >= low && total <= high) {
-          const cand = {
+          return {
             path: [...path],
             nodes: [...nodes],
             closeEdge: edge,
             distance: dist,
           };
-          if (opts.preferCovered) {
-            if (cov > bestInBandCov) {
-              bestInBandCov = cov;
-              bestInBand = cand;
-            }
-          } else {
-            return cand;
-          }
         }
         const abs = Math.abs(total - midTarget);
-        const take =
-          opts.preferCovered && best
-            ? prefersBetter(abs, cov, bestAbs, bestCov, false)
-            : abs < bestAbs;
-        if (take) {
+        if (abs < bestAbs) {
           bestAbs = abs;
-          bestCov = cov;
           best = {
             path: [...path],
             nodes: [...nodes],
@@ -635,13 +570,13 @@ function homewardWalk(
       node = pick.neighbor;
     }
   }
-  return bestInBand ?? best;
+  return best;
 }
 
 /**
  * Two-phase loop: grow outward to ~target/2, then return home along a
  * different, unused route and close the loop. Returns the best loop found, or
- * null. Prefers covered legs when requested.
+ * null.
  */
 function loopWalk(
   g: Graph,
@@ -657,10 +592,7 @@ function loopWalk(
   const high = target * (1 + tol);
   let best: WalkResult | null = null;
   let bestAbs = Infinity;
-  let bestCov = -Infinity;
-  let bestInBand: WalkResult | null = null;
-  let bestInBandCov = -Infinity;
-  for (let attempt = 0; attempt < Math.max(4, ATTEMPTS / 30); attempt++) {
+  for (let attempt = 0; attempt < Math.max(4, Math.floor(target / 1000) * 4); attempt++) {
     const p = oneWayWalk(g, start, target / 2, tol, ok, excluded, rng, opts);
     if (!p) continue;
     const excluded2 = new Set<number>([...excluded, ...p.path]);
@@ -674,6 +606,7 @@ function loopWalk(
       p.distance,
       low,
       high,
+      target,
       opts,
     );
     if (!q) continue;
@@ -688,30 +621,16 @@ function loopWalk(
         ? [...p.nodes, ...q.nodes.slice(1), start]
         : [...p.nodes, ...q.nodes.slice(1)];
     const abs = Math.abs(total - target);
-    const cov = coveredDist(g, full);
     if (total >= low && total <= high) {
-      const cand = {
+      return {
         path: full,
         nodes: fnodes,
         distance: total,
         gain: gainOfPath(g, full, fnodes),
       };
-      if (opts.preferCovered) {
-        if (cov > bestInBandCov) {
-          bestInBandCov = cov;
-          bestInBand = cand;
-        }
-      } else {
-        return cand;
-      }
     }
-    const take =
-      opts.preferCovered && best
-        ? prefersBetter(abs, cov, bestAbs, bestCov, false)
-        : abs < bestAbs;
-    if (take) {
+    if (abs < bestAbs) {
       bestAbs = abs;
-      bestCov = cov;
       best = {
         path: full,
         nodes: fnodes,
@@ -720,7 +639,7 @@ function loopWalk(
       };
     }
   }
-  return bestInBand ?? best;
+  return best;
 }
 
 function inBand(dist: number, target: number, tol: number): boolean {
@@ -753,7 +672,6 @@ function findBest(
 ): Found | null {
   let best: Found | null = null;
   let bestAbs = Infinity;
-  let bestCov = -Infinity;
   for (const tol of TOLERANCES) {
     const walk =
       kind === "loop"
@@ -764,14 +682,8 @@ function findBest(
     }
     if (walk) {
       const abs = Math.abs(walk.distance - target);
-      const cov = coveredDist(g, walk.path);
-      const take =
-        opts.preferCovered && best
-          ? prefersBetter(abs, cov, bestAbs, bestCov, false)
-          : abs < bestAbs;
-      if (take) {
+      if (abs < bestAbs) {
         bestAbs = abs;
-        bestCov = cov;
         best = { walk, tolerance: tol };
       }
     }
@@ -849,9 +761,6 @@ function toRoute(
  *  2. reuse — previous segments stay usable but are heavily penalised, so
  *     regeneration still succeeds when a fully-disjoint loop is impossible;
  *  3. fresh — no exclusion at all.
- * When `preferCovered` is set the search is biased toward covered segments;
- * if even that cannot close a loop, it retries without the bias so covered
- * preference never becomes the reason a route fails.
  * Returns null only when a loop genuinely cannot be formed.
  */
 function findLoop(
@@ -861,32 +770,15 @@ function findLoop(
   ok: MaskOk,
   excluded: Set<number>,
   rng: Rng,
-  preferCovered: boolean,
 ): Found | null {
-  if (!preferCovered) {
-    const strict = findBest(g, start, target, ok, excluded, rng, "loop");
-    if (strict) return strict;
-    if (excluded.size > 0) {
-      const reuse = findBest(g, start, target, ok, new Set(), rng, "loop", {
-        penalize: (edge) => excluded.has(edge),
-      });
-      if (reuse) return reuse;
-    }
-    return freshLoop(g, start, target, ok, rng);
-  }
-
-  const opts: WalkOpts = { preferCovered: true };
-  const strict = findBest(g, start, target, ok, excluded, rng, "loop", opts);
+  const strict = findBest(g, start, target, ok, excluded, rng, "loop");
   if (strict) return strict;
   if (excluded.size > 0) {
     const reuse = findBest(g, start, target, ok, new Set(), rng, "loop", {
-      ...opts,
       penalize: (edge) => excluded.has(edge),
     });
     if (reuse) return reuse;
   }
-  const fresh = findBest(g, start, target, ok, new Set(), rng, "loop", opts);
-  if (fresh) return fresh;
   return freshLoop(g, start, target, ok, rng);
 }
 
@@ -898,7 +790,7 @@ function freshLoop(
   ok: MaskOk,
   rng: Rng,
 ): Found | null {
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 8 + Math.floor(target / 2000) * 4; i++) {
     const found = findBest(g, start, target, ok, new Set(), rng, "loop");
     if (found) return found;
     rng();
@@ -937,10 +829,9 @@ export function generateRoute(
     nodeId: start,
   };
   const loop = req.criteria?.loop ?? true;
-  const preferCovered = !!req.criteria?.covered;
 
   if (loop) {
-    const found = findLoop(g, start, target, ok, excluded, rng, preferCovered);
+    const found = findLoop(g, start, target, ok, excluded, rng);
     if (found) {
       return {
         ok: true,
@@ -951,11 +842,11 @@ export function generateRoute(
     return { ok: false, error: "no-route" };
   }
 
-  let found = findBest(g, start, target, ok, excluded, rng, "one-way", {
-    preferCovered,
-  });
-  if (!found && preferCovered) {
-    found = findBest(g, start, target, ok, excluded, rng, "one-way");
+  let found = findBest(g, start, target, ok, excluded, rng, "one-way");
+  if (!found && excluded.size > 0) {
+    found = findBest(g, start, target, ok, new Set(), rng, "one-way", {
+      penalize: (edge) => excluded.has(edge),
+    });
   }
   if (found) {
     return {

@@ -27,6 +27,7 @@
 .map-floating {
   position: absolute;
   right: 10px;
+  top: 150px;
   z-index: 2;
   display: flex;
   flex-direction: row;
@@ -251,6 +252,7 @@
 
 .utility {
   flex-shrink: 0;
+  margin-top: auto;
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 2px;
@@ -1480,6 +1482,14 @@
 
   .app--dock-collapsed .map-layer {
     height: calc(100% - var(--dock-collapsed-h, 0px));
+  }
+
+  .app--dock-collapsed .generate-row {
+    display: none;
+  }
+
+  .app--dock-collapsed .dock-scroll {
+    display: none;
   }
 
   .app--dock-collapsed .origin-hint {

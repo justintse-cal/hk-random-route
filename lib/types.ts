@@ -1,7 +1,7 @@
 export type RouteType = "loop" | "one-way" | "out-and-back";
 
 export interface Criteria {
-  covered: boolean;
+  outdoorOnly: boolean;
   barrierFree: boolean;
   flat: boolean;
   loop: boolean;

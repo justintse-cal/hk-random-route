@@ -254,7 +254,7 @@ function applyOverlays(map: MapLibreMap, data: OverlayData, cache?: OverlayCache
     });
   }
 
-  if (!map.getLayer(ORIGIN_LAYER) && typeof map.getImage === "function" && map.getImage("origin-pin")) {
+  if (!map.getLayer(ORIGIN_LAYER)) {
     map.addLayer({
       id: ORIGIN_LAYER,
       type: "symbol",
@@ -384,6 +384,7 @@ export default function MapView({
     });
     map.addControl(new AttributionControl({ compact: true }), "bottom-left");
     map.addControl(new NavigationControl(), "top-right");
+    requestAnimationFrame(() => positionFloating());
     map.on("click", (e: MapMouseEvent) => {
       onPickRef.current({ lat: e.lngLat.lat, lon: e.lngLat.lng });
     });
@@ -393,6 +394,10 @@ export default function MapView({
 
     map.on("styleimagemissing", (e) => {
       if (map.hasImage(e.id)) return;
+      if (e.id === "origin-pin") {
+        addSvgImage(map, "origin-pin", ORIGIN_PIN_SVG, 128);
+        return;
+      }
       const canvas = document.createElement("canvas");
       canvas.width = 16;
       canvas.height = 16;

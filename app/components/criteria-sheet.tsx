@@ -34,7 +34,7 @@ export default function CriteriaSheet({
   const presets = [3, 5, 10];
 
   const rows: { key: keyof Criteria; label: string }[] = [
-    { key: "covered", label: t(lang, "criteria.covered") },
+    { key: "outdoorOnly", label: t(lang, "criteria.outdoorOnly") },
     { key: "barrierFree", label: t(lang, "criteria.barrierFree") },
     { key: "flat", label: t(lang, "criteria.flat") },
     { key: "loop", label: t(lang, "criteria.loop") },

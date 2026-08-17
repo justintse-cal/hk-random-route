@@ -177,25 +177,25 @@ export default function GenerateBand({
             {loading ? (
               <span className="spinner" aria-hidden="true" />
             ) : null}
-            {generateLabel}
+            <span className={loading ? "sr-only" : ""}>{generateLabel}</span>
           </button>
         </div>
       )}
 
       {!route && (
         <div className="generate-main">
-          <button
-            type="button"
-            className={`generate${loading ? " generate--loading" : ""}`}
-            disabled={loading || !originSet}
-            aria-busy={loading}
-            onClick={onGenerate}
-          >
-            {loading ? (
-              <span className="spinner" aria-hidden="true" />
-            ) : null}
-            {generateLabel}
-          </button>
+            <button
+              type="button"
+              className={`generate${loading ? " generate--loading" : ""}`}
+              disabled={loading || !originSet}
+              aria-busy={loading}
+              onClick={onGenerate}
+            >
+              {loading ? (
+                <span className="spinner" aria-hidden="true" />
+              ) : null}
+              <span className={loading ? "sr-only" : ""}>{generateLabel}</span>
+            </button>
         </div>
       )}
     </div>

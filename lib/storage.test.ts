@@ -85,7 +85,7 @@ describe("history", () => {
     return {
       id,
       route,
-      criteria: { covered: false, barrierFree: false, flat: false, loop: true },
+      criteria: { outdoorOnly: false, barrierFree: false, flat: false, loop: true },
       timestamp: now - ageMs,
     };
   }
