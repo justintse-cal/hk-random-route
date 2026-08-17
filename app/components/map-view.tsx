@@ -22,16 +22,10 @@ export interface MapPick {
   lon: number;
 }
 
-export interface HighlightSegment {
-  from: [number, number];
-  to: [number, number];
-}
-
 interface MapViewProps {
   origin: MapPick | null;
   route: Route | null;
   followPosition: MapPick | null;
-  highlightSegment: HighlightSegment | null;
   follow: boolean;
   dark: boolean;
   lang: Lang;
@@ -65,24 +59,16 @@ const ROUTE_SOURCE = "route";
 const ROUTE_CASING_LAYER = "route-casing";
 const ROUTE_GLOW_LAYER = "route-glow";
 const ROUTE_LAYER = "route-line";
-const HIGHLIGHT_SOURCE = "highlight";
-const HIGHLIGHT_CASING_LAYER = "highlight-casing";
-const HIGHLIGHT_LAYER = "highlight-line";
 const ORIGIN_SOURCE = "origin";
-const ORIGIN_GLOW_LAYER = "origin-glow";
-const ORIGIN_LAYER = "origin-dot";
+const ORIGIN_LAYER = "origin-pin";
 const USER_SOURCE = "user";
 const USER_GLOW_LAYER = "user-glow";
 const USER_LAYER = "user-dot";
-const NEXT_SOURCE = "next";
-const NEXT_GLOW_LAYER = "next-glow";
-const NEXT_LAYER = "next-dot";
 
 interface OverlayData {
   origin: MapPick | null;
   route: Route | null;
   followPosition: MapPick | null;
-  highlightSegment: HighlightSegment | null;
 }
 
 /**
@@ -102,7 +88,6 @@ interface OverlayCache {
   route?: CachedOverlayData;
   origin?: CachedOverlayData;
   followPosition?: CachedOverlayData;
-  highlight?: CachedOverlayData;
 }
 
 /**
@@ -139,21 +124,6 @@ function sourceNeedsData(
   const src = map.getSource(id);
   if (!src || data === undefined || data === null) return false;
   return !prev || prev.source !== src || prev.data !== data;
-}
-
-function setSourceData(
-  map: MapLibreMap,
-  id: string,
-  coords: [number, number][],
-): GeoJSONSource | undefined {
-  const src = map.getSource(id) as GeoJSONSource | undefined;
-  if (!src) return undefined;
-  src.setData({
-    type: "Feature",
-    properties: {},
-    geometry: { type: "LineString", coordinates: coords },
-  });
-  return src;
 }
 
 function setRouteData(
@@ -211,8 +181,28 @@ function whenStyleReady(map: MapLibreMap, fn: () => void): void {
   }
 }
 
+const ORIGIN_PIN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"><g transform="translate(1.4066 1.4066) scale(2.81 2.81)"><path d="M 45 0 c 15.103 0 27.389 12.287 27.389 27.389 C 72.389 46.616 46.147 66.607 45 90 c -1.147 -23.393 -27.389 -43.384 -27.389 -62.611 C 17.611 12.287 29.897 0 45 0 z" fill="rgb(255,80,80)"/><circle cx="45.005" cy="26.575" r="9.205" fill="rgb(191,0,3)"/></g></svg>`;
+
+function addSvgImage(map: MapLibreMap, name: string, svg: string, px: number): Promise<void> {
+  const dataUrl = `data:image/svg+xml;base64,${btoa(svg)}`;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = px;
+      canvas.height = px;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, px, px);
+      map.addImage(name, ctx.getImageData(0, 0, px, px));
+      resolve();
+    };
+    img.onerror = () => resolve();
+    img.src = dataUrl;
+  });
+}
+
 function applyOverlays(map: MapLibreMap, data: OverlayData, cache?: OverlayCache): void {
-  for (const id of [ROUTE_SOURCE, HIGHLIGHT_SOURCE, ORIGIN_SOURCE, USER_SOURCE, NEXT_SOURCE]) {
+  for (const id of [ROUTE_SOURCE, ORIGIN_SOURCE, USER_SOURCE]) {
     ensureSource(map, id);
   }
 
@@ -264,66 +254,46 @@ function applyOverlays(map: MapLibreMap, data: OverlayData, cache?: OverlayCache
     });
   }
 
-  if (!map.getLayer(HIGHLIGHT_CASING_LAYER)) {
+  if (!map.getLayer(ORIGIN_LAYER) && typeof map.getImage === "function" && map.getImage("origin-pin")) {
     map.addLayer({
-      id: HIGHLIGHT_CASING_LAYER,
-      type: "line",
-      source: HIGHLIGHT_SOURCE,
-      paint: {
-        "line-color": "#0e1116",
-        "line-width": 8,
-        "line-opacity": 0.45,
+      id: ORIGIN_LAYER,
+      type: "symbol",
+      source: ORIGIN_SOURCE,
+      layout: {
+        "icon-image": "origin-pin",
+        "icon-size": 0.35,
+        "icon-anchor": "bottom",
+        "icon-allow-overlap": true,
       },
     });
   }
 
-  if (!map.getLayer(HIGHLIGHT_LAYER)) {
+  if (!map.getLayer(USER_GLOW_LAYER)) {
     map.addLayer({
-      id: HIGHLIGHT_LAYER,
-      type: "line",
-      source: HIGHLIGHT_SOURCE,
+      id: USER_GLOW_LAYER,
+      type: "circle",
+      source: USER_SOURCE,
       paint: {
-        "line-color": "#f4f5f6",
-        "line-width": 4.5,
-        "line-opacity": 0.95,
+        "circle-radius": 24,
+        "circle-color": "#4285F4",
+        "circle-opacity": 0.28,
+        "circle-blur": 1.2,
       },
     });
   }
-
-  const dotLayers = [
-    [ORIGIN_SOURCE, ORIGIN_GLOW_LAYER, ORIGIN_LAYER, SIGNAL_BLUE, "#ffffff", SIGNAL_BLUE],
-    [USER_SOURCE, USER_GLOW_LAYER, USER_LAYER, "#35c874", "#ffffff", "#35c874"],
-    [NEXT_SOURCE, NEXT_GLOW_LAYER, NEXT_LAYER, "#f4f5f6", "#0e1116", "#0e1116"],
-  ] as const;
-
-  for (const [source, glowLayer, dotLayer, color, stroke, glow] of dotLayers) {
-    if (!map.getLayer(glowLayer)) {
-      map.addLayer({
-        id: glowLayer,
-        type: "circle",
-        source,
-        paint: {
-          "circle-radius": 24,
-          "circle-color": glow,
-          "circle-opacity": 0.28,
-          "circle-blur": 1.2,
-        },
-      });
-    }
-    if (!map.getLayer(dotLayer)) {
-      map.addLayer({
-        id: dotLayer,
-        type: "circle",
-        source,
-        paint: {
-          "circle-radius": 8,
-          "circle-color": color,
-          "circle-stroke-color": stroke,
-          "circle-stroke-width": 2.5,
-          "circle-blur": 0.15,
-        },
-      });
-    }
+  if (!map.getLayer(USER_LAYER)) {
+    map.addLayer({
+      id: USER_LAYER,
+      type: "circle",
+      source: USER_SOURCE,
+      paint: {
+        "circle-radius": 8,
+        "circle-color": "#4285F4",
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 2.5,
+        "circle-blur": 0.15,
+      },
+    });
   }
 
   if (data.route && sourceNeedsData(map, ROUTE_SOURCE, data.route, cache?.route)) {
@@ -341,24 +311,12 @@ function applyOverlays(map: MapLibreMap, data: OverlayData, cache?: OverlayCache
     const src = setPointData(map, USER_SOURCE, [data.followPosition.lon, data.followPosition.lat]);
     if (cache && src) cache.followPosition = { source: src, data: data.followPosition };
   }
-  if (
-    data.highlightSegment &&
-    sourceNeedsData(map, HIGHLIGHT_SOURCE, data.highlightSegment, cache?.highlight)
-  ) {
-    setSourceData(map, HIGHLIGHT_SOURCE, [
-      data.highlightSegment.from,
-      data.highlightSegment.to,
-    ]);
-    setPointData(map, NEXT_SOURCE, data.highlightSegment.to);
-    if (cache) cache.highlight = { source: map.getSource(HIGHLIGHT_SOURCE)!, data: data.highlightSegment };
-  }
 }
 
 export default function MapView({
   origin,
   route,
   followPosition,
-  highlightSegment,
   follow,
   dark,
   lang,
@@ -386,8 +344,8 @@ export default function MapView({
   onCancelOriginRef.current = onCancelOrigin;
   const confirmRef = useRef<HTMLButtonElement | null>(null);
   const didInit = useRef(false);
-  const dataRef = useRef<OverlayData>({ origin, route, followPosition, highlightSegment });
-  dataRef.current = { origin, route, followPosition, highlightSegment };
+  const dataRef = useRef<OverlayData>({ origin, route, followPosition });
+  dataRef.current = { origin, route, followPosition };
   const pendingRef = useRef<MapPick | null>(null);
   pendingRef.current = pendingOrigin;
   const overlayCacheRef = useRef<OverlayCache>({});
@@ -443,9 +401,11 @@ export default function MapView({
       map.addImage(e.id, ctx.getImageData(0, 0, 16, 16));
     });
 
-    map.on("load", () => {
+    map.on("load", async () => {
       const m = mapRef.current;
       if (!m) return;
+      await addSvgImage(m, "origin-pin", ORIGIN_PIN_SVG, 128);
+      if (mapRef.current !== m) return;
       collapseAttribution(m);
       applyOverlays(m, dataRef.current, overlayCacheRef.current);
       positionFloating();
@@ -519,7 +479,7 @@ export default function MapView({
         applyOverlays(map, dataRef.current, overlayCacheRef.current),
       );
     }
-  }, [route, origin, followPosition, highlightSegment]);
+  }, [route, origin, followPosition]);
 
   useEffect(() => {
     const map = mapRef.current;

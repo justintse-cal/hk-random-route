@@ -215,14 +215,15 @@
   border-radius: 50%;
 }
 
-.map-legend-dot--origin {
-  background: #2f6fed;
-  box-shadow: 0 0 0 2px rgb(47 111 237 / 0.25);
+.map-legend-img {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 .map-legend-dot--position {
-  background: #35c874;
-  box-shadow: 0 0 0 2px rgb(53 200 116 / 0.25);
+  background: #4285F4;
+  box-shadow: 0 0 0 2px rgb(66 133 244 / 0.25);
 }
 
 /* ---------- lamps ---------- */
