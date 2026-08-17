@@ -500,7 +500,7 @@ describe("app light end-to-end flow", () => {
       origin: { lat: 22.3027, lon: 114.1694 },
       route: makeRoute(),
       followPosition: null,
-      highlightSegment: null,
+
       follow: false,
       dark: false,
       lang: "tc" as const,
@@ -568,7 +568,7 @@ describe("app light end-to-end flow", () => {
       origin: null as { lat: number; lon: number } | null,
       route: null as Route | null,
       followPosition: null,
-      highlightSegment: null,
+
       follow: false,
       dark: false,
       lang: "tc" as const,
@@ -642,7 +642,7 @@ describe("app light end-to-end flow", () => {
       origin: null as { lat: number; lon: number } | null,
       route: null as Route | null,
       followPosition: null,
-      highlightSegment: null,
+
       follow: false,
       dark: false,
       lang: "tc" as const,
@@ -724,7 +724,7 @@ describe("app light end-to-end flow", () => {
       origin: null,
       route: null,
       followPosition: null,
-      highlightSegment: null,
+
       follow: false,
       dark: false,
       lang: "tc" as const,

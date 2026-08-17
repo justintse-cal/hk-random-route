@@ -568,14 +568,6 @@ export default function Home() {
     [lang],
   );
 
-  const highlightSegment =
-    route && follow?.active && follow.onRoute && follow.segmentIndex >= 0
-      ? {
-          from: route.geometry.coordinates[follow.segmentIndex],
-          to: route.geometry.coordinates[follow.segmentIndex + 1],
-        }
-      : null;
-
   const errorText = error ? appErrorText(lang, error) : null;
   const originErrorText = originError ? appErrorText(lang, originError) : null;
 
@@ -593,7 +585,6 @@ export default function Home() {
           origin={snappedOrigin ?? origin}
           route={route}
           followPosition={follow?.position ?? null}
-          highlightSegment={highlightSegment}
           follow={follow?.active ?? false}
           dark={dark}
           lang={lang}

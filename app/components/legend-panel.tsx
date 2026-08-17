@@ -24,7 +24,12 @@ export default function LegendView({ lang }: LegendViewProps) {
         <span>{t(lang, "legend.steep")}</span>
       </div>
       <div className="legend-row">
-        <span className="map-legend-dot map-legend-dot--origin" aria-hidden="true" />
+        <img
+          className="map-legend-img"
+          src="/drop-pin-10077.svg"
+          alt=""
+          aria-hidden="true"
+        />
         <span>{t(lang, "legend.origin")}</span>
       </div>
       <div className="legend-row">
