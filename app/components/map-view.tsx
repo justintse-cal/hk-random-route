@@ -184,10 +184,15 @@ function whenStyleReady(map: MapLibreMap, fn: () => void): void {
 const ORIGIN_PIN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"><g transform="translate(1.4066 1.4066) scale(2.81 2.81)"><path d="M 45 0 c 15.103 0 27.389 12.287 27.389 27.389 C 72.389 46.616 46.147 66.607 45 90 c -1.147 -23.393 -27.389 -43.384 -27.389 -62.611 C 17.611 12.287 29.897 0 45 0 z" fill="rgb(255,80,80)"/><circle cx="45.005" cy="26.575" r="9.205" fill="rgb(191,0,3)"/></g></svg>`;
 
 function addSvgImage(map: MapLibreMap, name: string, svg: string, px: number): Promise<void> {
+  if (map.hasImage(name)) return Promise.resolve();
   const dataUrl = `data:image/svg+xml;base64,${btoa(svg)}`;
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
+      if (map.hasImage(name)) {
+        resolve();
+        return;
+      }
       const canvas = document.createElement("canvas");
       canvas.width = px;
       canvas.height = px;
@@ -409,7 +414,9 @@ export default function MapView({
     map.on("load", async () => {
       const m = mapRef.current;
       if (!m) return;
-      await addSvgImage(m, "origin-pin", ORIGIN_PIN_SVG, 128);
+      if (!m.hasImage("origin-pin")) {
+        await addSvgImage(m, "origin-pin", ORIGIN_PIN_SVG, 128);
+      }
       if (mapRef.current !== m) return;
       collapseAttribution(m);
       applyOverlays(m, dataRef.current, overlayCacheRef.current);

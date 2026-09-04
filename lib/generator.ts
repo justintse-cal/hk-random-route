@@ -1,5 +1,6 @@
 import type { Graph } from "./graph";
 import { haversineM, snap, streetName } from "./graph";
+import { dijkstraToOrigin } from "./dijkstra";
 import { mulberry32, randomSeed, type Rng } from "./prng";
 import type {
   GenerateRequest,
@@ -38,6 +39,7 @@ function scaledMaxSteps(target: number): number {
  */
 export interface WalkOpts {
   penalize?: (edgeId: number) => boolean;
+  distToOrigin?: Float32Array;
 }
 
 const REUSE_PENALTY = 0.02;
@@ -165,13 +167,20 @@ function homeWeights(
   const dLon = refLon - g.lon[node];
   const len = Math.hypot(dLat, dLon) || 1e-9;
   const home = { lat: dLat / len, lon: dLon / len };
+  const distMap = opts.distToOrigin;
+  const dCurrent = distMap ? distMap[node] : Infinity;
   return cands.map((c) => {
     const eLat = g.lat[c.neighbor] - g.lat[node];
     const eLon = g.lon[c.neighbor] - g.lon[node];
     const el = Math.hypot(eLat, eLon) || 1e-9;
     const u = { lat: eLat / el, lon: eLon / el };
     const align = Math.max(0, u.lat * home.lat + u.lon * home.lon);
-    const w = 0.1 + align * align * 4;
+    let w = 0.1 + align * align * 4;
+    if (distMap && dCurrent < Infinity) {
+      const dNeighbor = distMap[c.neighbor];
+      if (dNeighbor < dCurrent) w *= 1.5;
+      else if (dNeighbor > dCurrent * 1.5) w *= 0.3;
+    }
     return w * weightFactor(g, c.edge, opts);
   });
 }
@@ -770,16 +779,18 @@ function findLoop(
   ok: MaskOk,
   excluded: Set<number>,
   rng: Rng,
+  opts: WalkOpts = {},
 ): Found | null {
-  const strict = findBest(g, start, target, ok, excluded, rng, "loop");
+  const strict = findBest(g, start, target, ok, excluded, rng, "loop", opts);
   if (strict) return strict;
   if (excluded.size > 0) {
     const reuse = findBest(g, start, target, ok, new Set(), rng, "loop", {
+      ...opts,
       penalize: (edge) => excluded.has(edge),
     });
     if (reuse) return reuse;
   }
-  return freshLoop(g, start, target, ok, rng);
+  return freshLoop(g, start, target, ok, rng, opts);
 }
 
 /** Repeated fresh loop attempts across advancing seeds, as a final guarantee. */
@@ -789,9 +800,10 @@ function freshLoop(
   target: number,
   ok: MaskOk,
   rng: Rng,
+  opts: WalkOpts = {},
 ): Found | null {
   for (let i = 0; i < 8 + Math.floor(target / 2000) * 4; i++) {
-    const found = findBest(g, start, target, ok, new Set(), rng, "loop");
+    const found = findBest(g, start, target, ok, new Set(), rng, "loop", opts);
     if (found) return found;
     rng();
   }
@@ -829,9 +841,11 @@ export function generateRoute(
     nodeId: start,
   };
   const loop = req.criteria?.loop ?? true;
+  const distToOrigin = dijkstraToOrigin(g, start, (e) => ok(g, e), target);
+  const walkOpts: WalkOpts = { distToOrigin };
 
   if (loop) {
-    const found = findLoop(g, start, target, ok, excluded, rng);
+    const found = findLoop(g, start, target, ok, excluded, rng, walkOpts);
     if (found) {
       return {
         ok: true,
@@ -842,9 +856,10 @@ export function generateRoute(
     return { ok: false, error: "no-route" };
   }
 
-  let found = findBest(g, start, target, ok, excluded, rng, "one-way");
+  let found = findBest(g, start, target, ok, excluded, rng, "one-way", walkOpts);
   if (!found && excluded.size > 0) {
     found = findBest(g, start, target, ok, new Set(), rng, "one-way", {
+      ...walkOpts,
       penalize: (edge) => excluded.has(edge),
     });
   }

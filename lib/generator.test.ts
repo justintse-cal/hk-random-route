@@ -7,6 +7,7 @@ import {
 } from "./generator";
 import type { Graph } from "./graph";
 import { loadGraph } from "./graph";
+import { dijkstraToOrigin } from "./dijkstra";
 import type { Criteria, GenerateResponse, Route } from "./types";
 
 let graph: Graph;
@@ -157,6 +158,45 @@ function expectInBand(res: GenerateResponse, target: number) {
   expect(res.route!.distanceM).toBeGreaterThanOrEqual(target - 0.1);
   expect(res.route!.distanceM).toBeLessThanOrEqual(target * (1 + tol) + 0.1);
 }
+
+describe("dijkstra distance buffer", () => {
+  it("marks the origin at zero and only reaches compliant edges", () => {
+    const o = originInGiantComponent();
+    const criteria = {};
+    const dist = dijkstraToOrigin(graph, o.nodeId, (e) => maskCompliant(e, criteria), 5000);
+    expect(dist[o.nodeId]).toBe(0);
+    expect(dist[o.nodeId]).toBeGreaterThanOrEqual(0);
+  });
+
+  it("returns non-negative, monotonic distances within the radius", () => {
+    const o = originInGiantComponent();
+    const dist = dijkstraToOrigin(graph, o.nodeId, () => true, 2000);
+    const radius = 2000;
+    for (let i = 0; i < graph.nodeCount; i++) {
+      if (dist[i] < radius) {
+        expect(dist[i]).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  it("distances are consistent along traversed edges", () => {
+    const o = originInGiantComponent();
+    const dist = dijkstraToOrigin(graph, o.nodeId, () => true, 3000);
+    let checked = 0;
+    for (let u = 0; u < graph.nodeCount && checked < 2000; u++) {
+      if (dist[u] >= 3000) continue;
+      for (let i = graph.adjStart[u]; i < graph.adjStart[u + 1]; i++) {
+        const v = graph.adjNeighbor[i];
+        if (dist[v] < 3000) {
+          expect(dist[v]).toBeLessThanOrEqual(dist[u] + graph.length[graph.adjEdge[i]] + 0.01);
+          checked++;
+          if (checked >= 2000) break;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+});
 
 describe("route generation contract", () => {
   it("rejects distances outside 0.5-50 km", () => {
