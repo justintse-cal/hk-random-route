@@ -1,6 +1,6 @@
 # HK 隨機路線 · HK Random Route
 
-A web app that generates random jogging and walking routes over the **HK 3D Pedestrian Network**, filtered by your criteria. Pick an origin, choose a distance and route preferences, and get a random loop, one-way, or out-and-back route you can follow live, export as GPX, or share with a link.
+A web app that generates random jogging and walking routes over the **HK 3D Pedestrian Network**, filtered by your criteria. Pick an origin, choose a distance and route preferences, and get a random loop or one-way route you can follow live, export as GPX, or share with a link.
 
 > Visit the live app [here](https://hk-random-route.vercel.app/).
 
@@ -12,7 +12,7 @@ A web app that generates random jogging and walking routes over the **HK 3D Pede
 ## Features
 
 - **Criteria-based generation** — target distance (0.5–50 km), covered, barrier-free, flat, loop
-- **Three route types** — loop (returns to the origin without repeating a segment), one-way, and out-and-back as a fallback
+- **Two route types** — loop (returns to the origin without repeating a segment) and one-way
 - **Random walks with tolerance** — distance always reaches the target (never under it, up to +10% over), widening to +15% / +25% when nothing fits; regeneration never repeats the previous route
 - **Live follow mode** — browser GPS with on/off-route detection, current street name, and next-segment highlight
 - **GPX export** — load routes into external device or apps
@@ -40,10 +40,12 @@ Open [http://localhost:3000](http://localhost:3000). The app loads a committed b
 The client calls a serverless API that runs a filter-aware random walk over the pedestrian network:
 
 1. The chosen origin is **snapped** to the nearest network node on a segment satisfying the active criteria (within ~500 m), or a clear "no compliant segment" error is returned.
-2. A seeded, self-avoiding random walk accumulates length over compliant segments until it reaches the distance tolerance band (at least the target, at most +X% over) — closing back to the origin for a loop, or ending at a random node for a one-way route.
-3. The result is returned as a GeoJSON route with metadata (distance, elevation gain, walk/run duration, type badge, per-segment street names and covered/flat flags) and rendered by MapLibre.
+2. A seeded, **self-avoiding random walk with backtracking** accumulates length over compliant segments until it lands in the distance tolerance band (at least the target, at most +X% over). When it dead-ends or overshoots, it pops edges and retries other branches rather than giving up.
+3. A **Dijkstra shortest-path map** from the origin (over compliant edges, up to the target radius) guides the walk's weights, so segments that move closer to the origin are strongly preferred.
+4. Loops are **two-phase**: an outward walk to roughly half the target, then a homeward walk biased back toward the origin that closes the loop. Longer one-way routes are grown from **consecutive chained legs**, each inheriting every earlier leg's edges so the final path is one continuous walk with no repeated segment.
+5. The result is returned as a GeoJSON route with metadata (distance, elevation gain, walk/run duration, type badge, per-segment street names and covered/flat flags) and rendered by MapLibre.
 
-The network is fragmented into 476 connected components, so generation is always constrained to the component the origin lands in.
+The harness tries tightening tolerance bands of +10%, then +15%, then +25% and picks the best route that lands in band; regeneration excludes the previous route's segments. The network is fragmented into 476 connected components, so generation is always constrained to the component the origin lands in.
 
 ## Building the graph asset from the geodatabase
 
@@ -79,14 +81,21 @@ At runtime `lib/graph.ts` reads the file directly into typed-array views over th
 ## Project structure
 
 ```
-app/            Next.js app router: page, layout, styles, UI components
-app/api/        Serverless routes: generate, snap, weather
-lib/            Route generator, graph loader, follow, gpx, share, storage, i18n
-scripts/        build_graph.py — geodatabase → binary graph
-public/         graph.bin and static assets
-screenshots/    README images
-docs/           spec and agent docs
-3DPN_P2.gdb/    Source geodatabase (not tracked; see .gitignore)
+hk-random-route/
+├── app/                    # Next.js app router: page, layout, styles
+│   ├── api/                # Serverless routes: generate, snap, weather
+│   ├── components/         # UI components (map, panels, sheets)
+│   └── *.css / *.tsx       # Styles and page entry
+├── lib/                    # Generator + Dijkstra, graph loader, follow, gpx, share, storage, i18n
+├── scripts/                # build_graph.py — geodatabase → binary graph
+├── public/                 # graph.bin and static assets
+├── screenshots/            # README images
+├── docs/                   # spec and agent docs
+├── 3DPN_P2.gdb/            # Source geodatabase (not tracked; see .gitignore)
+├── AGENTS.md               # Agent conventions for this repo
+├── CONTEXT.md              # Domain context
+├── DESIGN.md               # Design notes
+└── PRODUCT.md              # Product notes
 ```
 
 ## API
